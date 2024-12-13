@@ -1,48 +1,44 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace Scrtipt
 {
     public class StarterAssetsInputs : MonoBehaviour
     {
-        [Header("Movement Settings")] public float MoveSpeed = 5.0f;
-        public float SprintSpeed = 7.0f;
-        public float RotationSpeed = 10.0f;
-        public float JumpHeight = 1.5f;
-        public float Gravity = -9.81f;
+        [Header("Character Input Values")]
+        public Vector2 move;
+        public Vector2 look;
+        public bool jump;
+        public bool sprint;
 
-        [Header("Camera Settings")] public Transform CameraTransform;
-        public float TopClamp = 70.0f;
-        public float BottomClamp = -30.0f;
+        [Header("Movement Settings")]
+        public bool analogMovement;
+        public float moveSpeed = 5f;
+        public float sprintMultiplier = 1.5f; // Multiplier for sprint speed
+        public float gravity = -9.81f;
 
-        private CharacterController _controller;
-        private Animator _animator;
-        private Vector3 _velocity;
-        private Vector3 _moveDirection;
-        private float _targetSpeed;
-        private float _verticalRotation;
+        [Header("Mouse Cursor Settings")]
+        public bool cursorLocked = true;
+        public bool cursorInputForLook = true;
 
         private InputAsset _input;
-
-        private static readonly int SpeedParam = Animator.StringToHash("Speed");
-        private static readonly int JumpParam = Animator.StringToHash("Jump");
+        private CharacterController _controller; // Reference to CharacterController
+        private Vector3 _velocity; // Gravity velocity
+        private Animator _animator; // Reference to Animator
 
         private void Awake()
         {
-            _controller = GetComponent<CharacterController>();
-            _animator = GetComponent<Animator>();
+            // Создаем экземпляр сгенерированного InputAsset
             _input = new InputAsset();
-
-            if (CameraTransform == null)
-            {
-                Debug.LogError("CameraTransform is not assigned.");
-            }
+            _controller = GetComponent<CharacterController>(); // Initialize CharacterController
+            _animator = GetComponent<Animator>(); // Initialize Animator
         }
 
         private void OnEnable()
         {
+            // Включаем карту действий Gameplay
             _input.Gameplay.Enable();
 
+            // Подписываемся на действия
             _input.Gameplay.Move.performed += OnMovePerformed;
             _input.Gameplay.Move.canceled += OnMoveCanceled;
 
@@ -57,6 +53,7 @@ namespace Scrtipt
 
         private void OnDisable()
         {
+            // Отписываемся от действий
             _input.Gameplay.Move.performed -= OnMovePerformed;
             _input.Gameplay.Move.canceled -= OnMoveCanceled;
 
@@ -68,112 +65,111 @@ namespace Scrtipt
             _input.Gameplay.Sprint.performed -= OnSprintPerformed;
             _input.Gameplay.Sprint.canceled -= OnSprintCanceled;
 
+            // Отключаем карту действий Gameplay
             _input.Gameplay.Disable();
+        }
+
+        private void OnMovePerformed(UnityEngine.InputSystem.InputAction.CallbackContext context)
+        {
+            move = context.ReadValue<Vector2>();
+        }
+
+        private void OnMoveCanceled(UnityEngine.InputSystem.InputAction.CallbackContext context)
+        {
+            move = Vector2.zero;
+        }
+
+        private void OnLookPerformed(UnityEngine.InputSystem.InputAction.CallbackContext context)
+        {
+            if (cursorInputForLook)
+                look = context.ReadValue<Vector2>();
+        }
+
+        private void OnJumpPerformed(UnityEngine.InputSystem.InputAction.CallbackContext context)
+        {
+            jump = true;
+        }
+
+        private void OnJumpCanceled(UnityEngine.InputSystem.InputAction.CallbackContext context)
+        {
+            jump = false;
+        }
+
+        private void OnSprintPerformed(UnityEngine.InputSystem.InputAction.CallbackContext context)
+        {
+            sprint = true;
+        }
+
+        private void OnSprintCanceled(UnityEngine.InputSystem.InputAction.CallbackContext context)
+        {
+            sprint = false;
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            SetCursorState(cursorLocked);
+        }
+
+        private void SetCursorState(bool newState)
+        {
+            Cursor.lockState = newState ? CursorLockMode.Locked : CursorLockMode.None;
         }
 
         private void Update()
         {
-            HandleMovement();
-            HandleJumpAndGravity();
-            UpdateAnimator();
-        }
-
-        private void HandleMovement()
-        {
-            float targetSpeed = _input.Gameplay.Sprint.IsPressed() ? SprintSpeed : MoveSpeed;
-            Vector3 inputDirection = new Vector3(_input.Gameplay.Move.ReadValue<Vector2>().x, 0,
-                _input.Gameplay.Move.ReadValue<Vector2>().y).normalized;
-
-            if (inputDirection.magnitude > 0.1f)
+            if (_controller != null)
             {
-                _moveDirection = Quaternion.Euler(0, CameraTransform.eulerAngles.y, 0) * inputDirection;
-                Quaternion targetRotation = Quaternion.LookRotation(_moveDirection);
-                transform.rotation =
-                    Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * RotationSpeed);
+                // Movement logic
+                Vector3 moveDirection = new Vector3(move.x, 0, move.y);
+                if (moveDirection.magnitude > 0.1f)
+                {
+                    moveDirection = transform.TransformDirection(moveDirection);
+
+                    float currentSpeed = moveSpeed;
+                    if (sprint)
+                    {
+                        currentSpeed *= sprintMultiplier;
+                    }
+
+                    _controller.Move(moveDirection * currentSpeed * Time.deltaTime);
+                }
+
+                // Gravity logic
+                if (!_controller.isGrounded)
+                {
+                    _velocity.y += gravity * Time.deltaTime;
+                }
+                else if (jump)
+                {
+                    _velocity.y = Mathf.Sqrt(-2f * gravity * moveSpeed); // Jump force
+                    jump = false; // Reset jump state
+                }
+                else
+                {
+                    _velocity.y = -2f; // Keep grounded
+                }
+
+                _controller.Move(_velocity * Time.deltaTime);
+                UpdateAnimator();
             }
-
-            Vector3 move = _moveDirection * targetSpeed;
-            _controller.Move(move * Time.deltaTime);
-        }
-
-        private void HandleJumpAndGravity()
-        {
-            if (_velocity.y < 0)
-            {
-                _velocity.y = -2f;
-            }
-
-            if (_input.Gameplay.Jump.WasPressedThisFrame())
-            {
-                _velocity.y = Mathf.Sqrt(2 * JumpHeight * -Gravity);
-            }
-
-            _velocity.y += Gravity * Time.deltaTime;
-            _controller.Move(_velocity * Time.deltaTime);
         }
 
         private void UpdateAnimator()
         {
-            float speed = _controller.velocity.magnitude;
-            _animator.SetFloat(SpeedParam, speed / SprintSpeed);
+            // Speed parameter for blend tree (idle, walk, run)
+            float speed = move.magnitude * (sprint ? sprintMultiplier : 1f);
 
-            if (_input.Gameplay.Jump.WasPressedThisFrame())
+            // Set motionSpeed parameter (adjusts blend tree smoothly)
+            _animator.SetFloat("motionSpeed", speed);
+
+            // Set grounded parameter
+            _animator.SetBool("Grounded", _controller.isGrounded);
+
+            // Set jump trigger (for jump animation)
+            if (jump)
             {
-                _animator.SetTrigger(JumpParam);
+                _animator.SetTrigger("Jump");
             }
-        }
-
-        private void LateUpdate()
-        {
-            HandleCameraRotation();
-        }
-
-        private void HandleCameraRotation()
-        {
-            Vector2 lookInput = _input.Gameplay.Look.ReadValue<Vector2>();
-            float mouseX = lookInput.x;
-            float mouseY = lookInput.y;
-
-            _verticalRotation -= mouseY;
-            _verticalRotation = Mathf.Clamp(_verticalRotation, BottomClamp, TopClamp);
-
-            CameraTransform.localRotation = Quaternion.Euler(_verticalRotation, 0, 0);
-            transform.Rotate(Vector3.up * mouseX);
-        }
-
-        private void OnMovePerformed(InputAction.CallbackContext context)
-        {
-            // Placeholder if specific actions are needed during movement
-        }
-
-        private void OnMoveCanceled(InputAction.CallbackContext context)
-        {
-            // Placeholder if specific actions are needed when movement stops
-        }
-
-        private void OnLookPerformed(InputAction.CallbackContext context)
-        {
-            // Placeholder for look actions
-        }
-
-        private void OnJumpPerformed(InputAction.CallbackContext context)
-        {
-            // Placeholder for jump actions
-        }
-
-        private void OnJumpCanceled(InputAction.CallbackContext context)
-        {
-            // Placeholder for jump cancel actions
-        }
-
-        private void OnSprintPerformed(InputAction.CallbackContext context)
-        {
-            // Placeholder for sprint actions
-        }
-
-        private void OnSprintCanceled(InputAction.CallbackContext context)
-        {
-            // Placeholder for sprint cancel actions
         }
     }
 }
