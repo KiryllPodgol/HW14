@@ -2428,7 +2428,7 @@ Animator:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1547941857}
   m_Enabled: 1
-  m_Avatar: {fileID: 0}
+  m_Avatar: {fileID: 9000000, guid: fe3f90c9b6237974cb067a6d3c6ce22b, type: 3}
   m_Controller: {fileID: 9100000, guid: 40db3173a05ae3242b1c182a09b0a183, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
@@ -2505,14 +2505,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 91b0957fc82e4d840b044a8786032beb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  MoveSpeed: 5
-  SprintSpeed: 7
-  RotationSpeed: 10
-  JumpHeight: 1.5
-  Gravity: -9.81
-  CameraTransform: {fileID: 330585546}
-  TopClamp: 70
-  BottomClamp: -30
+  walkSpeed: 3
+  runSpeed: 6
+  sprintSpeed: 9
+  rotationSpeed: 720
+  gravity: -9.81
+  animator: {fileID: 1547941858}
 --- !u!1 &1644811907
 GameObject:
   m_ObjectHideFlags: 0

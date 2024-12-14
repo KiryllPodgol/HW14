@@ -1,175 +1,140 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
-namespace Scrtipt
+[RequireComponent(typeof(CharacterController))]
+public class SimplePlayerController : MonoBehaviour
 {
-    public class StarterAssetsInputs : MonoBehaviour
+    [Header("Movement Settings")]
+    [SerializeField] private float walkSpeed = 3f;
+    [SerializeField] private float runSpeed = 6f;
+    [SerializeField] private float sprintSpeed = 9f;
+    [SerializeField] private float rotationSpeed = 720f;
+
+    [Header("Gravity")]
+    [SerializeField] private float gravity = -9.81f;
+
+    [Header("Animator")]
+    [SerializeField] private Animator animator;
+
+    private CharacterController controller;
+    private InputAsset inputAsset;
+
+    private Vector2 inputDirection;
+    private Vector3 velocity;
+    private float currentSpeed;
+
+    private int animIDSpeed;
+    private int animIDGrounded;
+    private int animIDJump;
+    private int animIDFreeFall;
+    private int animIDMotionSpeed;
+
+    private void Awake()
     {
-        [Header("Character Input Values")]
-        public Vector2 move;
-        public Vector2 look;
-        public bool jump;
-        public bool sprint;
+        controller = GetComponent<CharacterController>();
+        inputAsset = new InputAsset();
+        AssignAnimationIDs();
+        currentSpeed = walkSpeed;
+    }
 
-        [Header("Movement Settings")]
-        public bool analogMovement;
-        public float moveSpeed = 5f;
-        public float sprintMultiplier = 1.5f; // Multiplier for sprint speed
-        public float gravity = -9.81f;
+    private void OnEnable()
+    {
+        inputAsset.Gameplay.Enable();
+        inputAsset.Gameplay.Move.performed += OnMove;
+        inputAsset.Gameplay.Move.canceled += OnMoveCanceled;
+        inputAsset.Gameplay.Sprint.started += OnSprintStarted;
+        inputAsset.Gameplay.Sprint.canceled += OnSprintCanceled;
+        inputAsset.Gameplay.Jump.started += OnJumpStarted;
+    }
 
-        [Header("Mouse Cursor Settings")]
-        public bool cursorLocked = true;
-        public bool cursorInputForLook = true;
+    private void OnDisable()
+    {
+        inputAsset.Gameplay.Move.performed -= OnMove;
+        inputAsset.Gameplay.Move.canceled -= OnMoveCanceled;
+        inputAsset.Gameplay.Sprint.started -= OnSprintStarted;
+        inputAsset.Gameplay.Sprint.canceled -= OnSprintCanceled;
+        inputAsset.Gameplay.Jump.started -= OnJumpStarted;
+        inputAsset.Gameplay.Disable();
+    }
 
-        private InputAsset _input;
-        private CharacterController _controller; // Reference to CharacterController
-        private Vector3 _velocity; // Gravity velocity
-        private Animator _animator; // Reference to Animator
+    private void Update()
+    {
+        HandleMovement();
+        ApplyGravity();
+        UpdateAnimator();
+    }
 
-        private void Awake()
+    private void OnMove(InputAction.CallbackContext context)
+    {
+        inputDirection = context.ReadValue<Vector2>();
+    }
+
+    private void OnMoveCanceled(InputAction.CallbackContext context)
+    {
+        inputDirection = Vector2.zero;
+    }
+
+    private void OnSprintStarted(InputAction.CallbackContext context)
+    {
+        currentSpeed = sprintSpeed;  
+    }
+
+    private void OnSprintCanceled(InputAction.CallbackContext context)
+    {
+        currentSpeed = runSpeed;  
+    }
+
+    private void OnJumpStarted(InputAction.CallbackContext context)
+    {
+        if (controller.isGrounded)
         {
-            // Создаем экземпляр сгенерированного InputAsset
-            _input = new InputAsset();
-            _controller = GetComponent<CharacterController>(); // Initialize CharacterController
-            _animator = GetComponent<Animator>(); // Initialize Animator
+            velocity.y = Mathf.Sqrt(-2f * gravity * 2f);
         }
+    }
 
-        private void OnEnable()
+    private void HandleMovement()
+    {
+        
+        Vector3 moveDirection = new Vector3(inputDirection.x, 0, inputDirection.y).normalized;
+
+      
+        if (moveDirection.sqrMagnitude > 0.01f)
         {
-            // Включаем карту действий Gameplay
-            _input.Gameplay.Enable();
-
-            // Подписываемся на действия
-            _input.Gameplay.Move.performed += OnMovePerformed;
-            _input.Gameplay.Move.canceled += OnMoveCanceled;
-
-            _input.Gameplay.Look.performed += OnLookPerformed;
-
-            _input.Gameplay.Jump.performed += OnJumpPerformed;
-            _input.Gameplay.Jump.canceled += OnJumpCanceled;
-
-            _input.Gameplay.Sprint.performed += OnSprintPerformed;
-            _input.Gameplay.Sprint.canceled += OnSprintCanceled;
+           
+            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+            controller.Move(moveDirection * currentSpeed * Time.deltaTime);
         }
+    }
 
-        private void OnDisable()
+    private void ApplyGravity()
+    {
+        if (controller.isGrounded && velocity.y < 0)
         {
-            // Отписываемся от действий
-            _input.Gameplay.Move.performed -= OnMovePerformed;
-            _input.Gameplay.Move.canceled -= OnMoveCanceled;
-
-            _input.Gameplay.Look.performed -= OnLookPerformed;
-
-            _input.Gameplay.Jump.performed -= OnJumpPerformed;
-            _input.Gameplay.Jump.canceled -= OnJumpCanceled;
-
-            _input.Gameplay.Sprint.performed -= OnSprintPerformed;
-            _input.Gameplay.Sprint.canceled -= OnSprintCanceled;
-
-            // Отключаем карту действий Gameplay
-            _input.Gameplay.Disable();
+            velocity.y = -2f;
         }
+        velocity.y += gravity * Time.deltaTime;
+        controller.Move(velocity * Time.deltaTime);
+    }
 
-        private void OnMovePerformed(UnityEngine.InputSystem.InputAction.CallbackContext context)
-        {
-            move = context.ReadValue<Vector2>();
-        }
+    private void UpdateAnimator()
+    {
+        if (animator == null) return;
+        float speedPercent = currentSpeed / sprintSpeed;
+        animator.SetFloat(animIDSpeed, speedPercent, 0.1f, Time.deltaTime);
+        animator.SetFloat(animIDMotionSpeed, speedPercent, 0.1f, Time.deltaTime);
+        animator.SetBool(animIDGrounded, controller.isGrounded);
+        animator.SetBool(animIDJump, !controller.isGrounded && velocity.y > 0); 
+        animator.SetBool(animIDFreeFall, !controller.isGrounded && velocity.y < 0);
+    }
 
-        private void OnMoveCanceled(UnityEngine.InputSystem.InputAction.CallbackContext context)
-        {
-            move = Vector2.zero;
-        }
 
-        private void OnLookPerformed(UnityEngine.InputSystem.InputAction.CallbackContext context)
-        {
-            if (cursorInputForLook)
-                look = context.ReadValue<Vector2>();
-        }
-
-        private void OnJumpPerformed(UnityEngine.InputSystem.InputAction.CallbackContext context)
-        {
-            jump = true;
-        }
-
-        private void OnJumpCanceled(UnityEngine.InputSystem.InputAction.CallbackContext context)
-        {
-            jump = false;
-        }
-
-        private void OnSprintPerformed(UnityEngine.InputSystem.InputAction.CallbackContext context)
-        {
-            sprint = true;
-        }
-
-        private void OnSprintCanceled(UnityEngine.InputSystem.InputAction.CallbackContext context)
-        {
-            sprint = false;
-        }
-
-        private void OnApplicationFocus(bool hasFocus)
-        {
-            SetCursorState(cursorLocked);
-        }
-
-        private void SetCursorState(bool newState)
-        {
-            Cursor.lockState = newState ? CursorLockMode.Locked : CursorLockMode.None;
-        }
-
-        private void Update()
-        {
-            if (_controller != null)
-            {
-                // Movement logic
-                Vector3 moveDirection = new Vector3(move.x, 0, move.y);
-                if (moveDirection.magnitude > 0.1f)
-                {
-                    moveDirection = transform.TransformDirection(moveDirection);
-
-                    float currentSpeed = moveSpeed;
-                    if (sprint)
-                    {
-                        currentSpeed *= sprintMultiplier;
-                    }
-
-                    _controller.Move(moveDirection * currentSpeed * Time.deltaTime);
-                }
-
-                // Gravity logic
-                if (!_controller.isGrounded)
-                {
-                    _velocity.y += gravity * Time.deltaTime;
-                }
-                else if (jump)
-                {
-                    _velocity.y = Mathf.Sqrt(-2f * gravity * moveSpeed); // Jump force
-                    jump = false; // Reset jump state
-                }
-                else
-                {
-                    _velocity.y = -2f; // Keep grounded
-                }
-
-                _controller.Move(_velocity * Time.deltaTime);
-                UpdateAnimator();
-            }
-        }
-
-        private void UpdateAnimator()
-        {
-            // Speed parameter for blend tree (idle, walk, run)
-            float speed = move.magnitude * (sprint ? sprintMultiplier : 1f);
-
-            // Set motionSpeed parameter (adjusts blend tree smoothly)
-            _animator.SetFloat("motionSpeed", speed);
-
-            // Set grounded parameter
-            _animator.SetBool("Grounded", _controller.isGrounded);
-
-            // Set jump trigger (for jump animation)
-            if (jump)
-            {
-                _animator.SetTrigger("Jump");
-            }
-        }
+    private void AssignAnimationIDs()
+    {
+        animIDSpeed = Animator.StringToHash("Speed");
+        animIDGrounded = Animator.StringToHash("Grounded");
+        animIDJump = Animator.StringToHash("Jump");
+        animIDFreeFall = Animator.StringToHash("FreeFall");
+        animIDMotionSpeed = Animator.StringToHash("MotionSpeed");
     }
 }
